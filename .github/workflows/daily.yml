@@ -5,10 +5,18 @@ on:
   schedule:
     - cron: "0 9 * * *"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: youtube-shorts-pipeline
+  cancel-in-progress: false
+
 jobs:
   run-pipeline:
     name: Run YouTube Shorts Pipeline
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     env:
       LOG_LEVEL: INFO
