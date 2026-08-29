@@ -87,6 +87,7 @@ def load_upload_config() -> UploadConfig:
         client_id=client_id,
         client_secret=client_secret,
         refresh_token=refresh_token,
+        privacy_status=settings.YOUTUBE_VISIBILITY,
     )
 
 

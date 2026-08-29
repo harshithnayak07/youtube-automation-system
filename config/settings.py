@@ -31,6 +31,7 @@ OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-
 YOUTUBE_CLIENT_ID: str = os.getenv("YOUTUBE_CLIENT_ID", "")
 YOUTUBE_CLIENT_SECRET: str = os.getenv("YOUTUBE_CLIENT_SECRET", "")
 YOUTUBE_REFRESH_TOKEN: str = os.getenv("YOUTUBE_REFRESH_TOKEN", "")
+YOUTUBE_VISIBILITY: str = os.getenv("YOUTUBE_VISIBILITY", "private")
 
 # ---------------------------------------------------------------------------
 # Media / Image Generation (Pexels)

@@ -130,10 +130,21 @@ class TestLoadUploadConfig:
         mock_settings.YOUTUBE_CLIENT_ID = "id"
         mock_settings.YOUTUBE_CLIENT_SECRET = "secret"
         mock_settings.YOUTUBE_REFRESH_TOKEN = "token"
+        mock_settings.YOUTUBE_VISIBILITY = "private"
         cfg = load_upload_config()
         assert cfg.client_id == "id"
         assert cfg.client_secret == "secret"
         assert cfg.refresh_token == "token"
+        assert cfg.privacy_status == "private"
+
+    @patch("youtube.uploader.settings")
+    def test_loads_visibility_from_settings(self, mock_settings):
+        mock_settings.YOUTUBE_CLIENT_ID = "id"
+        mock_settings.YOUTUBE_CLIENT_SECRET = "secret"
+        mock_settings.YOUTUBE_REFRESH_TOKEN = "token"
+        mock_settings.YOUTUBE_VISIBILITY = "public"
+        cfg = load_upload_config()
+        assert cfg.privacy_status == "public"
 
     @patch("youtube.uploader.settings")
     def test_raises_on_missing_client_id(self, mock_settings):
@@ -745,6 +756,7 @@ class TestSensitiveCredentialHandling:
         mock_settings.YOUTUBE_CLIENT_ID = "id_val"
         mock_settings.YOUTUBE_CLIENT_SECRET = "sec_val"
         mock_settings.YOUTUBE_REFRESH_TOKEN = "ref_val"
+        mock_settings.YOUTUBE_VISIBILITY = "private"
         cfg = load_upload_config()
 
         # Config repr should not leak into unexpected places
