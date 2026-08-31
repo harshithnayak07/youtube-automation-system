@@ -240,9 +240,8 @@ The following are excluded from version control via `.gitignore`:
 
 ## Limitations
 
-- Videos are uploaded as **private** by default (change `_DEFAULT_PRIVACY_STATUS` in `youtube/uploader.py` to modify)
 - The pipeline requires **FFmpeg** installed and available on PATH for video composition
 - Image generation depends on the **Pexels API** — rate limits may apply
 - LLM-generated content quality depends on the configured model and provider
 - The QA gate blocks uploads on hard errors but allows warnings through
-- Job database records use a placeholder ID (wired in a future phase)
+
