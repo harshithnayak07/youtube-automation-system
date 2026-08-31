@@ -16,6 +16,7 @@ from media.image import (
     generate_scene_image,
     generate_all_scene_images,
     _build_search_query,
+    _build_search_candidates,
     _validate_image_bytes,
     _detect_image_format,
     _is_image_file_valid,
@@ -622,6 +623,89 @@ class TestEmptyPexelsResults:
             generate_scene_image(scene, output_dir=tmp_path, api_key="fake-key")
 
         # No partial file left behind
+        assert not (tmp_path / "scene_1.jpg").exists()
+        assert not (tmp_path / "scene_1.tmp").exists()
+
+
+# ---------------------------------------------------------------------------
+# generate_scene_image — query fallback resilience
+# ---------------------------------------------------------------------------
+
+class TestQueryFallback:
+    """A single no-result Pexels query must not fail the whole image stage."""
+
+    @patch("media.image._download_photo", return_value=_FAKE_JPEG)
+    @patch("media.image._search_pexels")
+    def test_normal_search_succeeds_without_fallback(
+        self, mock_search: MagicMock, mock_dl: MagicMock, tmp_path: Path
+    ):
+        # First (original) query returns a photo, so no fallback is needed.
+        mock_search.return_value = [_make_pexels_photo()]
+        scene = _make_scene(visual_description="futuristic robot in a city")
+
+        result = generate_scene_image(scene, output_dir=tmp_path, api_key="key")
+
+        assert _is_image_file_valid(result.path)
+        # Only the original query was attempted.
+        assert mock_search.call_count == 1
+
+    @patch("media.image._download_photo", return_value=_FAKE_JPEG)
+    @patch("media.image._search_pexels")
+    def test_simplified_query_succeeds_when_original_empty(
+        self, mock_search: MagicMock, mock_dl: MagicMock, tmp_path: Path
+    ):
+        # Original query returns no results, simplified query returns a photo.
+        def search(query, **kwargs):
+            if query == "futuristic robot in a city":
+                return []
+            return [_make_pexels_photo()]
+
+        mock_search.side_effect = search
+        scene = _make_scene(visual_description="futuristic robot in a city")
+
+        result = generate_scene_image(scene, output_dir=tmp_path, api_key="key")
+
+        assert _is_image_file_valid(result.path)
+        # Original + one simplified query were attempted.
+        assert mock_search.call_count == 2
+        assert mock_search.call_args_list[0][0][0] == "futuristic robot in a city"
+
+    @patch("media.image._download_photo", return_value=_FAKE_JPEG)
+    @patch("media.image._search_pexels")
+    def test_generic_fallback_succeeds_when_original_and_simplified_empty(
+        self, mock_search: MagicMock, mock_dl: MagicMock, tmp_path: Path
+    ):
+        # Only the final generic (relevant) fallback query returns a photo.
+        def search(query, **kwargs):
+            return [] if query != "robot city" else [_make_pexels_photo()]
+
+        mock_search.side_effect = search
+        scene = _make_scene(visual_description="futuristic robot in a city")
+
+        result = generate_scene_image(scene, output_dir=tmp_path, api_key="key")
+
+        assert _is_image_file_valid(result.path)
+        # Original + simplified + generic fallback all attempted.
+        assert mock_search.call_count == 3
+
+    @patch("media.image._search_pexels")
+    def test_all_fallback_attempts_fail_raises_clear_error(
+        self, mock_search: MagicMock, tmp_path: Path
+    ):
+        # Every candidate query returns no results.
+        mock_search.return_value = []
+        scene = _make_scene(visual_description="futuristic robot in a city")
+
+        with pytest.raises(
+            ImageGenError, match="No suitable Pexels image found"
+        ):
+            generate_scene_image(scene, output_dir=tmp_path, api_key="key")
+
+        # Every candidate query was attempted (original, simplified, generic).
+        assert mock_search.call_count == len(
+            _build_search_candidates(scene.visual_description)
+        )
+        # No partial/empty file left behind.
         assert not (tmp_path / "scene_1.jpg").exists()
         assert not (tmp_path / "scene_1.tmp").exists()
 

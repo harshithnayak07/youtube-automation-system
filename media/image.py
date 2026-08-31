@@ -124,6 +124,45 @@ def _build_search_query(visual_description: str) -> str:
     return query
 
 
+_SEARCH_STOP_WORDS = frozenset(
+    {
+        "a", "an", "the", "in", "on", "at", "of", "for", "with", "and",
+        "or", "to", "is", "are", "was", "were", "about", "its", "it", "from",
+    }
+)
+
+
+def _clean_search_words(visual_description: str) -> list[str]:
+    """Return a cleaned, ordered list of searchable words from a scene."""
+    return _build_search_query(visual_description).split()
+
+
+def _build_search_candidates(visual_description: str) -> list[str]:
+    """Build an ordered list of Pexels search queries for a scene.
+
+    The first candidate is the original (unchanged) query.  Subsequent
+    candidates are progressively simplified but still meaning-related so that
+    a single overly-specific query that Pexels cannot match does not fail the
+    whole pipeline.
+    """
+    words = _clean_search_words(visual_description)
+    if not words:
+        return [visual_description.strip()]
+
+    original = " ".join(words)
+
+    core = [w for w in words if w.lower() not in _SEARCH_STOP_WORDS] or words
+
+    simplified = " ".join(core[:4])
+    generic = " ".join(core[-2:]) if len(core) >= 2 else " ".join(core)
+
+    candidates: list[str] = []
+    for candidate in (original, simplified, generic):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
+
+
 def _search_pexels(
     query: str,
     *,
@@ -253,32 +292,46 @@ def generate_scene_image(
         logger.info("Reusing existing image for scene %d: %s", scene.scene, image_path)
         return GeneratedImage(scene=scene.scene, path=image_path)
 
-    query = _build_search_query(scene.visual_description)
-    logger.info("Searching Pexels for scene %d: %s", scene.scene, query)
+    query_candidates = _build_search_candidates(scene.visual_description)
+    logger.info("Searching Pexels for scene %d: %s", scene.scene, query_candidates[0])
 
     last_exc: Exception | None = None
     for attempt in range(1, max_retries + 1):
         try:
-            photos = _search_pexels(query, api_key=key)
-            photo = _select_best_photo(photos)
-            if photo is None:
-                raise ImageGenError(f"Pexels returned no results for query: {query}")
+            # Try each candidate query in order until one yields a photo.
+            # A no-result query is not transient, so we fall back to simpler
+            # meaning-related queries instead of retrying the same one.
+            for query in query_candidates:
+                logger.info("Querying Pexels for scene %d: %s", scene.scene, query)
+                photos = _search_pexels(query, api_key=key)
+                photo = _select_best_photo(photos)
+                if photo is None:
+                    logger.info(
+                        "No results for scene %d query: %s", scene.scene, query
+                    )
+                    continue
 
-            image_bytes = _download_photo(photo)
+                image_bytes = _download_photo(photo)
 
-            if not _validate_image_bytes(image_bytes):
-                raise ImageGenError("Pexels returned non-image data")
+                if not _validate_image_bytes(image_bytes):
+                    raise ImageGenError("Pexels returned non-image data")
 
-            # Atomic write: write to temp then rename
-            tmp_path = image_path.with_suffix(".tmp")
-            tmp_path.write_bytes(image_bytes)
-            tmp_path.replace(image_path)
+                # Atomic write: write to temp then rename
+                tmp_path = image_path.with_suffix(".tmp")
+                tmp_path.write_bytes(image_bytes)
+                tmp_path.replace(image_path)
 
-            logger.info(
-                "Saved image for scene %d: %s (%d bytes)",
-                scene.scene, image_path, len(image_bytes),
+                logger.info(
+                    "Saved image for scene %d: %s (%d bytes)",
+                    scene.scene, image_path, len(image_bytes),
+                )
+                return GeneratedImage(scene=scene.scene, path=image_path)
+
+            # All candidate queries returned no results.
+            raise ImageGenError(
+                f"No suitable Pexels image found for scene {scene.scene} "
+                f"after trying queries: {query_candidates}"
             )
-            return GeneratedImage(scene=scene.scene, path=image_path)
 
         except Exception as exc:
             last_exc = exc
