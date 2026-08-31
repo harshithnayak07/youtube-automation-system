@@ -57,7 +57,7 @@ Youtube_Automation_system/
 ├── storage/
 │   ├── database.py          # SQLite job record management
 │   └── state.db             # Runtime database (gitignored)
-├── tests/                   # 592 pytest tests
+├── tests/                   # 597 pytest tests
 ├── tools/                   # Manual/E2E scripts (not for production)
 ├── output/                  # Generated media (gitignored)
 ├── jobs/                    # Job artifacts (gitignored)
@@ -164,7 +164,7 @@ DATABASE_PATH=output/jobs.db
 pytest -q
 ```
 
-This runs the full test suite (592 tests) covering all modules: pipeline orchestration, LLM routing, content generation, media processing, YouTube upload, email notifications, and QA validation.
+This runs the full test suite (597 tests) covering all modules: pipeline orchestration, LLM routing, content generation, media processing, YouTube upload, email notifications, and QA validation.
 
 ## Running the Pipeline
 
@@ -173,6 +173,34 @@ python main.py
 ```
 
 > **Warning:** This runs the real pipeline. It will research a topic, generate content, compose a video, and upload it to YouTube as a private video. Ensure your `.env` is properly configured with valid API keys and OAuth credentials before running.
+
+## Gallery
+
+Visual proof that the automated pipeline runs successfully end-to-end, publishes to YouTube, and is covered by an automated test suite.
+
+### GitHub Actions — Workflow Runs
+
+Scheduled and manual workflow runs with their success/failure history (proof of ongoing CI automation):
+
+![GitHub Actions workflow runs](docs/github-actions-runs.png)
+
+### GitHub Actions — Successful Pipeline
+
+The complete "Run YouTube Shorts Pipeline" job with all steps succeeding — research, script, scenes, images, TTS, video, thumbnail, QA, and upload (proof that the end-to-end pipeline executes successfully):
+
+![Successful GitHub Actions workflow](docs/workflow-success.png)
+
+### YouTube Output
+
+Generated Shorts published on the YouTube channel (proof of actual YouTube output):
+
+![YouTube channel Shorts output](docs/youtube-output.png)
+
+### Test Suite
+
+The full automated test suite (`pytest -q` → `597 passed`) covering all modules (proof of automated test coverage):
+
+![Test suite](docs/tests-passed.png)
 
 ## Tools
 
