@@ -7,7 +7,8 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from llm.client import LLMClient, LLMError
+from llm.client import LLMClient, LLMError, LLMResponse
+from llm.retry import _SemanticRetry, run_retryable_llm_stage
 from research.trending import Topic
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,24 @@ Narration excerpt (first 200 chars):
 # Public API
 # ---------------------------------------------------------------------------
 
+class _MetadataRetryable:
+    """Stage adapter validating a single LLM response for metadata.
+
+    Uses the existing ``_parse_metadata`` validation as the source of truth.
+    """
+
+    def retry(
+        self,
+        response: LLMResponse,
+        prompt: str,
+        attempt_number: int,
+    ) -> VideoMetadata:
+        metadata = _parse_metadata(response.text)
+        if metadata is None:
+            raise _SemanticRetry("LLM returned malformed or empty metadata")
+        return metadata
+
+
 def generate_metadata(
     llm_client: LLMClient,
     topic: Topic,
@@ -84,7 +103,8 @@ def generate_metadata(
     LLMError
         If the LLM call fails after retries and fallback.
     RuntimeError
-        If the LLM returns malformed or empty metadata.
+        If the LLM returns malformed or empty metadata after all semantic
+        retry attempts.
     """
     if not topic.title.strip():
         raise ValueError("Topic title must not be empty")
@@ -102,11 +122,12 @@ def generate_metadata(
 
     logger.info("Generating metadata for topic: %s", topic.title)
 
-    response = llm_client.complete(full_prompt, max_tokens=max_tokens)
-    metadata = _parse_metadata(response.text)
-
-    if metadata is None:
-        raise RuntimeError("LLM returned malformed or empty metadata")
+    metadata = run_retryable_llm_stage(
+        llm_client,
+        _MetadataRetryable(),
+        full_prompt,
+        max_tokens=max_tokens,
+    )
 
     logger.info("Generated metadata: title=%r, tags=%d", metadata.title, len(metadata.tags))
     return metadata

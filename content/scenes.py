@@ -7,7 +7,8 @@ import logging
 import re
 from dataclasses import dataclass
 
-from llm.client import LLMClient, LLMError
+from llm.client import LLMClient, LLMError, LLMResponse
+from llm.retry import _SemanticRetry, run_retryable_llm_stage
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,23 @@ Split this narration into visual scenes:
 
 
 # ---------------------------------------------------------------------------
+# Parsing / validation
+# ---------------------------------------------------------------------------
+
+class _ScenesRetryable:
+    """Stage adapter validating a single LLM response for scene planning.
+
+    Uses the existing ``_parse_scenes`` validation as the source of truth.
+    """
+
+    def retry(self, response: LLMResponse, prompt: str, attempt_number: int) -> list[Scene]:
+        scenes = _parse_scenes(response.text)
+        if not scenes:
+            raise _SemanticRetry("LLM returned no valid scenes")
+        return scenes
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -79,7 +97,8 @@ def plan_scenes(
     LLMError
         If the LLM call fails after retries and fallback.
     RuntimeError
-        If the LLM returns malformed or empty scene data.
+        If the LLM returns malformed or empty scene data after all
+        semantic retry attempts.
     """
     if not narration.strip():
         raise ValueError("Narration must not be empty")
@@ -89,19 +108,16 @@ def plan_scenes(
 
     logger.info("Planning scenes for narration (%d chars)", len(narration))
 
-    response = llm_client.complete(full_prompt, max_tokens=max_tokens)
-    scenes = _parse_scenes(response.text)
-
-    if not scenes:
-        raise RuntimeError("LLM returned no valid scenes")
+    scenes = run_retryable_llm_stage(
+        llm_client,
+        _ScenesRetryable(),
+        full_prompt,
+        max_tokens=max_tokens,
+    )
 
     logger.info("Planned %d scenes", len(scenes))
     return scenes
 
-
-# ---------------------------------------------------------------------------
-# Parsing / validation
-# ---------------------------------------------------------------------------
 
 def _parse_scenes(raw: str) -> list[Scene]:
     """Parse LLM JSON output into a list of Scene objects."""

@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 import re
 
-from llm.client import LLMClient, LLMError
+from llm.client import LLMClient, LLMError, LLMResponse
+from llm.retry import _SemanticRetry, run_retryable_llm_stage
 from research.trending import Topic
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,23 @@ Summary: {summary}
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+class _NarrationRetryable:
+    """Stage adapter validating a single LLM response for narration.
+
+    Uses the existing ``_clean_narration`` validation as the source of truth.
+    """
+
+    def retry(self, response: LLMResponse, prompt: str, attempt_number: int) -> str:
+        narration = _clean_narration(response.text)
+        if not narration:
+            raise _SemanticRetry("LLM returned empty narration content")
+        return narration
+
+
 def generate_narration(
     llm_client: LLMClient,
     topic: Topic,
@@ -66,7 +84,8 @@ def generate_narration(
     LLMError
         If the LLM call fails after retries and fallback.
     RuntimeError
-        If the LLM returns empty or unusable content.
+        If the LLM returns empty or unusable content after all semantic
+        retry attempts.
     """
     if not topic.title.strip():
         raise ValueError("Topic title must not be empty")
@@ -83,21 +102,17 @@ def generate_narration(
 
     logger.info("Generating narration for topic: %s", topic.title)
 
-    response = llm_client.complete(full_prompt, max_tokens=max_tokens)
-    narration = _clean_narration(response.text)
-
-    if not narration:
-        raise RuntimeError("LLM returned empty narration content")
+    narration = run_retryable_llm_stage(
+        llm_client,
+        _NarrationRetryable(),
+        full_prompt,
+        max_tokens=max_tokens,
+    )
 
     word_count = len(narration.split())
     logger.info("Generated narration: %d words", word_count)
 
     return narration
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 
 def _clean_narration(raw: str) -> str:
