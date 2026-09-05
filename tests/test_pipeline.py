@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch, call
@@ -250,11 +251,13 @@ class TestCreateJobRecord:
 
 class TestUpdateJobRecord:
     @patch("core.pipeline.get_connection")
-    def test_updates_status(self, mock_get_conn):
+    @patch("core.pipeline.init_db")
+    def test_updates_status(self, mock_init, mock_get_conn):
         mock_conn = MagicMock()
         mock_get_conn.return_value = mock_conn
 
         _update_job_record(1, status="completed")
+        mock_init.assert_called_once()
         mock_conn.execute.assert_called_once()
         mock_conn.commit.assert_called_once()
         mock_conn.close.assert_called_once()
@@ -263,7 +266,8 @@ class TestUpdateJobRecord:
         assert "status = ?" in sql
 
     @patch("core.pipeline.get_connection")
-    def test_updates_video_id(self, mock_get_conn):
+    @patch("core.pipeline.init_db")
+    def test_updates_video_id(self, mock_init, mock_get_conn):
         mock_conn = MagicMock()
         mock_get_conn.return_value = mock_conn
 
@@ -272,7 +276,8 @@ class TestUpdateJobRecord:
         assert "video_id = ?" in sql
 
     @patch("core.pipeline.get_connection")
-    def test_updates_error_message(self, mock_get_conn):
+    @patch("core.pipeline.init_db")
+    def test_updates_error_message(self, mock_init, mock_get_conn):
         mock_conn = MagicMock()
         mock_get_conn.return_value = mock_conn
 
@@ -281,7 +286,8 @@ class TestUpdateJobRecord:
         assert "error_message = ?" in sql
 
     @patch("core.pipeline.get_connection")
-    def test_updates_metadata_json(self, mock_get_conn):
+    @patch("core.pipeline.init_db")
+    def test_updates_metadata_json(self, mock_init, mock_get_conn):
         mock_conn = MagicMock()
         mock_get_conn.return_value = mock_conn
 
@@ -290,7 +296,8 @@ class TestUpdateJobRecord:
         assert "metadata = ?" in sql
 
     @patch("core.pipeline.get_connection")
-    def test_no_op_when_no_updates(self, mock_get_conn):
+    @patch("core.pipeline.init_db")
+    def test_no_op_when_no_updates(self, mock_init, mock_get_conn):
         mock_conn = MagicMock()
         mock_get_conn.return_value = mock_conn
 
@@ -301,7 +308,8 @@ class TestUpdateJobRecord:
 
 class TestGetJobRecord:
     @patch("core.pipeline.get_connection")
-    def test_returns_dict_when_found(self, mock_get_conn):
+    @patch("core.pipeline.init_db")
+    def test_returns_dict_when_found(self, mock_init, mock_get_conn):
         mock_conn = MagicMock()
         mock_row = MagicMock()
         mock_row.__iter__ = lambda self: iter([("id", 1), ("topic", "AI")])
@@ -313,13 +321,75 @@ class TestGetJobRecord:
         assert result is not None
 
     @patch("core.pipeline.get_connection")
-    def test_returns_none_when_not_found(self, mock_get_conn):
+    @patch("core.pipeline.init_db")
+    def test_returns_none_when_not_found(self, mock_init, mock_get_conn):
         mock_conn = MagicMock()
         mock_conn.execute.return_value.fetchone.return_value = None
         mock_get_conn.return_value = mock_conn
 
         result = _get_job_record(999)
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Fresh database — schema must be self-initializing
+# ---------------------------------------------------------------------------
+
+class TestFreshDatabase:
+    """Regression for "Failed to record job failure: no such table: jobs".
+
+    A fresh checkout has no state.db, so storage helpers must create the
+    schema via init_db() before touching the table.
+    """
+
+    def test_update_job_record_on_fresh_db(self, tmp_path, monkeypatch):
+        db_path = tmp_path / "fresh.db"
+        monkeypatch.setattr("storage.database.settings.DATABASE_PATH", str(db_path))
+
+        _update_job_record(1, status="failed", error_message="boom")
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            tables = [r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )]
+        finally:
+            conn.close()
+        assert "jobs" in tables
+
+    def test_get_job_record_returns_none_on_fresh_db(self, tmp_path, monkeypatch):
+        db_path = tmp_path / "fresh.db"
+        monkeypatch.setattr("storage.database.settings.DATABASE_PATH", str(db_path))
+
+        result = _get_job_record(1)
+
+        assert result is None
+
+    def test_handle_failure_on_fresh_db_creates_schema_without_warning(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        db_path = tmp_path / "fresh.db"
+        monkeypatch.setattr("storage.database.settings.DATABASE_PATH", str(db_path))
+        monkeypatch.setattr("core.pipeline.send_job_failure", MagicMock())
+
+        with caplog.at_level(logging.WARNING, logger="core.pipeline"):
+            result = _handle_failure(
+                job_id="job-fresh",
+                failed_stage=PipelineStage.RESEARCH,
+                error_type="RuntimeError",
+                error_message="no topics found",
+            )
+
+        assert result.success is False
+        conn = sqlite3.connect(str(db_path))
+        try:
+            tables = [r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )]
+        finally:
+            conn.close()
+        assert "jobs" in tables
+        assert "no such table" not in caplog.text
 
 
 # ---------------------------------------------------------------------------

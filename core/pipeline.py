@@ -105,6 +105,7 @@ def _update_job_record(
     metadata: dict[str, Any] | None = None,
 ) -> None:
     """Update a job record.  Only non-None fields are written."""
+    init_db()
     updates: list[str] = []
     values: list[Any] = []
 
@@ -139,6 +140,7 @@ def _update_job_record(
 
 def _get_job_record(job_db_id: int) -> dict[str, Any] | None:
     """Fetch a job record by ID."""
+    init_db()
     conn = get_connection()
     try:
         row = conn.execute(
