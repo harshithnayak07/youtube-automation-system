@@ -1,6 +1,6 @@
 # YouTube Shorts Automation System
 
-An end-to-end automation pipeline that researches trending AI topics, generates narration and visuals, composes a YouTube Shorts video, and uploads it to YouTube — with email notifications for job outcomes.
+An end-to-end automation pipeline that researches trending AI topics, generates narration and visuals, composes a YouTube Shorts video, and uploads it to YouTube - with email notifications for job outcomes.
 
 ## What It Does
 
@@ -15,8 +15,8 @@ The system runs a 12-stage pipeline that:
 7. **Generates metadata** (title, description, tags) via LLM
 8. **Creates a thumbnail** by compositing scene images
 9. **Runs QA validation** on all artifacts before upload
-10. **Uploads to YouTube** via OAuth (resumable upload, private by default)
-11. **Records the job** in a SQLite database
+10. **Uploads to YouTube** via OAuth (resumable upload; local runs default to private)
+11. **Records the job outcome** (best-effort tracking in a local SQLite file)
 12. **Sends email notifications** (success, failure, or partial success)
 
 If the QA gate fails, the upload is blocked and a failure notification is sent.
@@ -25,49 +25,49 @@ If the QA gate fails, the upload is blocked and a failure notification is sent.
 
 ```
 Youtube_Automation_system/
-├── main.py                  # Production entry point
-├── requirements.txt         # Python dependencies
-├── .env.example             # Environment variable template
-├── config/
-│   ├── settings.py          # Centralized env var configuration
-│   └── client_secret.json   # YouTube OAuth credentials (gitignored)
-├── core/
-│   ├── pipeline.py          # 12-stage pipeline orchestrator
-│   ├── qa.py                # QA gate — validates all artifacts
-│   └── constants.py         # Project-wide paths and constants
-├── research/
-│   └── trending.py          # Google News RSS topic discovery
-├── llm/
-│   ├── client.py            # LLM client with primary/fallback routing
-│   └── generator.py         # LLM content generation helpers
-├── content/
-│   ├── script.py            # Narration generation
-│   ├── scenes.py            # Scene planning
-│   └── metadata.py          # YouTube metadata generation
-├── media/
-│   ├── image.py             # Pexels image fetching
-│   ├── tts.py               # Edge TTS audio generation
-│   └── thumbnail.py         # Thumbnail compositing
-├── video/
-│   └── compositor.py        # MoviePy video composition with captions
-├── youtube/
-│   └── uploader.py          # OAuth + resumable YouTube upload
-├── notifications/
-│   └── email_sender.py      # SMTP email notifications
-├── storage/
-│   ├── database.py          # SQLite job record management
-│   └── state.db             # Runtime database (gitignored)
-├── tests/                   # 597 pytest tests
-├── tools/                   # Manual/E2E scripts (not for production)
-├── output/                  # Generated media (gitignored)
-├── jobs/                    # Job artifacts (gitignored)
-└── logs/                    # Application logs (gitignored)
+|-- main.py                  # Production entry point
+|-- requirements.txt         # Python dependencies
+|-- .env.example             # Environment variable template
+|-- config/
+|   |-- settings.py          # Centralized env var configuration
+|   `-- client_secret.json   # YouTube OAuth credentials (gitignored)
+|-- core/
+|   |-- pipeline.py          # 12-stage pipeline orchestrator
+|   |-- qa.py                # QA gate - validates all artifacts
+|   `-- constants.py         # Project-wide paths and constants
+|-- research/
+|   `-- trending.py          # Google News RSS topic discovery
+|-- llm/
+|   |-- client.py            # LLM client with primary/fallback routing
+|   `-- generator.py         # LLM content generation helpers
+|-- content/
+|   |-- script.py            # Narration generation
+|   |-- scenes.py            # Scene planning
+|   `-- metadata.py          # YouTube metadata generation
+|-- media/
+|   |-- image.py             # Pexels image fetching
+|   |-- tts.py               # Edge TTS audio generation
+|   `-- thumbnail.py         # Thumbnail compositing
+|-- video/
+|   `-- compositor.py        # MoviePy video composition with captions
+|-- youtube/
+|   `-- uploader.py          # OAuth + resumable YouTube upload
+|-- notifications/
+|   `-- email_sender.py      # SMTP email notifications
+|-- storage/
+|   |-- database.py          # SQLite job record management
+|   `-- state.db             # Runtime database (gitignored)
+|-- tests/                   # 619 pytest tests
+|-- tools/                   # Manual/E2E scripts (not for production)
+|-- output/                  # Generated media (gitignored)
+|-- jobs/                    # Job artifacts (gitignored)
+`-- logs/                    # Application logs (gitignored)
 ```
 
 ## Prerequisites
 
 - **Python 3.10+**
-- **FFmpeg** — required for video/audio muxing (must be on PATH)
+- **FFmpeg** - required for video/audio muxing (must be on PATH)
 - **API keys/accounts:**
   - [Groq](https://console.groq.com/) or [OpenRouter](https://openrouter.ai/) API key for LLM
   - [Pexels](https://www.pexels.com/api/) API key for images
@@ -109,7 +109,7 @@ Copy `.env.example` to `.env` and configure the following:
 ### LLM Provider
 
 ```env
-# Primary (required — at least one)
+# Primary (required - at least one)
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=llama-3.3-70b-versatile
 
@@ -164,7 +164,20 @@ DATABASE_PATH=output/jobs.db
 pytest -q
 ```
 
-This runs the full test suite (597 tests) covering all modules: pipeline orchestration, LLM routing, content generation, media processing, YouTube upload, email notifications, and QA validation.
+This runs the full test suite (619 tests) covering all modules: pipeline orchestration, LLM routing, content generation, media processing, YouTube upload, email notifications, and QA validation.
+
+## Metrics & Validation
+
+Verified implementation facts:
+
+- **619 automated tests** passing
+- **3** maximum semantic LLM retry attempts per content-generation stage
+- **3** bounded Pexels fallback queries per scene
+- **60 minutes** GitHub Actions job timeout
+- **Daily automated execution** (scheduled GitHub Actions workflow)
+- **YouTube Data API v3** uploads with **OAuth 2.0 refresh-token** authentication
+- **Resumable uploads** with automated thumbnail upload
+- **Automated email notifications** for success and failure outcomes
 
 ## Running the Pipeline
 
@@ -172,21 +185,21 @@ This runs the full test suite (597 tests) covering all modules: pipeline orchest
 python main.py
 ```
 
-> **Warning:** This runs the real pipeline. It will research a topic, generate content, compose a video, and upload it to YouTube as a private video. Ensure your `.env` is properly configured with valid API keys and OAuth credentials before running.
+> **Warning:** This runs the real pipeline. It will research a topic, generate content, compose a video, and upload it to YouTube. Local runs default to private visibility; the production GitHub Actions workflow is configured to publish publicly. Ensure your `.env` is properly configured with valid API keys and OAuth credentials before running.
 
 ## Gallery
 
 Visual proof that the automated pipeline runs successfully end-to-end, publishes to YouTube, and is covered by an automated test suite.
 
-### GitHub Actions — Workflow Runs
+### GitHub Actions - Workflow Runs
 
 Scheduled and manual workflow runs with their success/failure history (proof of ongoing CI automation):
 
 ![GitHub Actions workflow runs](docs/github-actions-runs.png)
 
-### GitHub Actions — Successful Pipeline
+### GitHub Actions - Successful Pipeline
 
-The complete "Run YouTube Shorts Pipeline" job with all steps succeeding — research, script, scenes, images, TTS, video, thumbnail, QA, and upload (proof that the end-to-end pipeline executes successfully):
+The complete "Run YouTube Shorts Pipeline" job with all steps succeeding - research, script, scenes, images, TTS, video, thumbnail, QA, and upload (proof that the end-to-end pipeline executes successfully):
 
 ![Successful GitHub Actions workflow](docs/workflow-success.png)
 
@@ -198,7 +211,7 @@ Generated Shorts published on the YouTube channel (proof of actual YouTube outpu
 
 ### Test Suite
 
-The full automated test suite (`pytest -q` → `597 passed`) covering all modules (proof of automated test coverage):
+The full automated test suite (`pytest -q` -> `619 passed`) covering all modules (proof of automated test coverage):
 
 ![Test suite](docs/tests-passed.png)
 
@@ -223,25 +236,25 @@ The following are excluded from version control via `.gitignore`:
 
 - `.env` and all credential files
 - `config/client_secret.json` and OAuth token files
-- `output/` — generated videos, images, audio, thumbnails
-- `jobs/*.json` — job artifacts
-- `logs/*.log` — application logs
-- `*.db` — SQLite databases
-- `.venv/` — virtual environments
-- `__pycache__/` — Python bytecode
+- `output/` - generated videos, images, audio, thumbnails
+- `jobs/*.json` - job artifacts
+- `logs/*.log` - application logs
+- `*.db` - SQLite databases
+- `.venv/` - virtual environments
+- `__pycache__/` - Python bytecode
 
 ## Security Notes
 
-- **Never commit `.env`** — it contains API keys, SMTP passwords, and OAuth tokens
-- **Never commit `config/client_secret.json`** — it contains YouTube OAuth client credentials
-- **Never expose secrets** in logs, error messages, or email content — the notification system is designed to avoid leaking credentials
+- **Never commit `.env`** - it contains API keys, SMTP passwords, and OAuth tokens
+- **Never commit `config/client_secret.json`** - it contains YouTube OAuth client credentials
+- **Never expose secrets** in logs, error messages, or email content - the notification system is designed to avoid leaking credentials
 - The YouTube uploader uses **OAuth 2.0 refresh tokens**, not service account keys
-- All uploads default to **private** visibility
+- Local runs upload with **private** visibility by default; the production GitHub Actions workflow is configured for **public** publishing
 
 ## Limitations
 
 - The pipeline requires **FFmpeg** installed and available on PATH for video composition
-- Image generation depends on the **Pexels API** — rate limits may apply
+- Image generation depends on the **Pexels API** - rate limits may apply
 - LLM-generated content quality depends on the configured model and provider
 - The QA gate blocks uploads on hard errors but allows warnings through
 
